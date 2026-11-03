@@ -31,6 +31,11 @@ land in both training and test data. The model can then memorise the person inst
 This is the same leakage problem as patient-level splits in sleep-apnea ECG studies.
 `vit_position_random_frames` runs exactly that leaky split, so the gap is measured, not assumed.
 
+**Measured:** at 40 epochs the leaky split scores 98.3% against 90.7% on unseen people, a 7.6-point inflation,
+even though the leaky split trains on fewer frames (3,926 against about 4,540). At 14 epochs there was no gap
+(84.7% against 85.2%), because the model was still underfitting: a model that cannot yet memorise its training
+frames gains nothing from seeing the test person. Leakage needs capacity to show up.
+
 Uncertainty: the 95% intervals come from a bootstrap that resamples **people**, not frames, because
 frames from one person are not independent.
 
@@ -60,6 +65,11 @@ frames from one person are not independent.
 
 - AdamW (weight decay 0.05), one-cycle learning rate, label smoothing 0.1, gradient clipping at 1.0.
 - Hyperparameters are fixed in advance and never tuned on the held-out person, which would leak the test set.
+- **One change after the first run:** at 14 epochs the ViT got only 87% of its own training frames right, so it was
+  underfitting. It was rerun for 40 epochs (99% training accuracy on the leaky split). The decision used training
+  accuracy only, and both runs are reported. Result on unseen people: 85.2% to 90.7%.
+- **Calibration.** At 14 epochs the model was *under*confident (mean confidence 61%, accuracy 85%, ECE 0.24).
+  Label smoothing, dropout, heavy augmentation and a short schedule all push confidence down. At 40 epochs ECE is 0.069.
 - **Augmentations grounded in the physics of the mat:**
   - Shift by up to 2 sensors, because people do not lie in exactly the same place.
   - Gain jitter of +/-15%, because sensors drift and calibration differs.
@@ -75,11 +85,31 @@ frames from one person are not independent.
   learn it, so on small data a CNN is a serious competitor. Report the comparison honestly, whichever way it goes.
 - **Logistic regression on pooled pixels.** A floor: how much does depth add at all?
 
+Results, 17 positions, unseen people, all at 14 epochs:
+
+| Variant | Accuracy |
+|---|---|
+| CNN | 89.7% |
+| ViT | 85.2% |
+| ViT, no mirror augmentation | 82.1% (mirror is worth 3.1 points) |
+| Logistic regression | 79.9% |
+| ViT, no positional embedding | 51.4% (location is worth 34 points) |
+
+The CNN wins at equal budget. With 40 epochs the ViT reaches 90.7%, but the CNN was not rerun for 40 epochs
+and the intervals overlap, so the honest claim is "comparable", not "better".
+
+Errors sit between neighbouring angles: bed inclines 15/16/17 (30°, 45°, 60°) and the left wedges 6/7 (30° vs 60°).
+Position 16 has the lowest recall (58%), mostly predicted as 15.
+
 ## Attention rollout
 
 `attention_rollout` multiplies the head-averaged attention matrices (plus the residual identity) through
 the layers to estimate how much each patch feeds into [CLS]. `figures/attention_rollout.png` shows it on a
-held-out person: which body regions the model relies on for each posture.
+held-out person, next to the mean pressure for each posture.
+
+**Result:** rollout is close to uniform (largest patch 3.3% against 2.8% if spread evenly). The residual identity
+added at every layer dominates in a 4-block model, so rollout does not single out body regions here. Say so in an
+interview rather than reading meaning into it. Last-layer attention or gradient-based maps would be the next thing to try.
 
 ## Questions an interviewer may ask
 
@@ -87,5 +117,11 @@ held-out person: which body regions the model relies on for each posture.
   uses. Then measure it against a CNN instead of assuming it wins.
 - *What does attention give you here?* Every patch can use every other patch in one layer, so the model can
   relate shoulder load to hip load directly. A CNN needs depth to connect distant regions.
+- *Why did the CNN beat your ViT?* At 14 epochs the ViT was underfitting. A CNN has locality built in, so it
+  learns faster on 13 people. Trained longer, the ViT reaches 90.7%, level with the CNN within the intervals.
+- *Why didn't the leaky split inflate results at first?* The 14-epoch model could not memorise its training
+  frames. Once it could (40 epochs), the random split read 98.3% against 90.7% on new people.
+- *Why is position 16 so hard?* It is a 45° bed incline between 30° and 60°. On the mat, neighbouring
+  inclines shift weight only slightly. Temporal context or a regression target for angle would help.
 - *What would you do with more data or time?* Use temporal attention across consecutive frames to track
   turning, train self-supervised on unlabelled nights, and calibrate per person with a few labelled frames.

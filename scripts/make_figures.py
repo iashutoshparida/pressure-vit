@@ -28,7 +28,7 @@ def main(data_root):
     # Blue: tested on people the model never saw. Orange: leaky random-frame split.
     surface, ink, muted, axis = "#fcfcfb", "#0b0b0b", "#898781", "#c3c2b7"
     blue, orange = "#2a78d6", "#eb6834"
-    labels = {"logreg_position_loso": "Logistic regression (14 ep.)",
+    labels = {"logreg_position_loso": "Logistic regression",
               "vit_position_loso_no_posemb": "ViT, no positional emb. (14 ep.)",
               "vit_position_loso_no_mirror": "ViT, no mirror aug. (14 ep.)",
               "vit_position_loso": "ViT (14 ep.)",
