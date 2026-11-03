@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.npz
+results/proba_*.npy
+.pytest_cache/
+results/run_log.txt
+figures/*.tmp
