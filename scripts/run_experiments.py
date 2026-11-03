@@ -81,8 +81,14 @@ def main():
             ("vit_position_loso_no_mirror", "position", lambda: PressureViT(ViTConfig(num_classes=17)),
              dict(epochs=14, mirror_aug=False)),
         ]
+    # Longer schedule: at 14 epochs the ViT is still underfitting (87% accuracy on its own
+    # training frames), so it is also run for 40 epochs. Chosen from training accuracy,
+    # never from held-out accuracy.
+    long_runs = [
+        ("vit_position_loso_40ep", "position", lambda: PressureViT(ViTConfig(num_classes=17)), dict(epochs=40)),
+    ]
     if args.only:
-        plan = [p for p in plan + [
+        plan = [p for p in plan + long_runs + [
             ("cnn_position_loso", "position", lambda: SmallCNN(17), dict(epochs=14)),
             ("vit_position_loso_no_posemb", "position",
              lambda: PressureViT(ViTConfig(num_classes=17, pos_embedding=False)), dict(epochs=14)),
@@ -106,7 +112,9 @@ def main():
     if want("logreg_position_loso"):
         run_logreg(data, subjects, record)
     if want("vit_position_random_frames"):
-        run_random_split(data, ep, record)
+        run_random_split(data, ep or 14, record, "vit_position_random_frames")
+    if want("vit_position_random_frames_40ep"):
+        run_random_split(data, ep or 40, record, "vit_position_random_frames_40ep")
     if want("rollout"):
         run_rollout(data, ep)
     log("done")
@@ -124,19 +132,19 @@ def run_logreg(data, subjects, record):
     record("logreg_position_loso", proba, tested, "position")
 
 
-def run_random_split(data, ep, record):
+def run_random_split(data, epochs, record, name):
     # Leakage demo: random frame-level split lets the same person's near-identical frames
-    # sit on both sides of the split. Same model, same budget, very different number.
-    log("\n### vit_position_random_frames (leaky split)")
+    # sit on both sides of the split. Same model and budget as the matching LOSO run.
+    log(f"\n### {name} (leaky split, {epochs} epochs)")
     rng = np.random.default_rng(0)
     is_test = rng.random(len(data.x)) < 0.2
     tr = np.where(~is_test & (data.frame % 4 == 0))[0]
     te = np.where(is_test)[0]
-    cfg = TrainConfig(task="position", epochs=ep or 14, train_stride=1)
+    cfg = TrainConfig(task="position", epochs=epochs, train_stride=1)
     model = fit(PressureViT(ViTConfig(num_classes=17)), data.x[tr], labels_for("position", data, tr), cfg)
     proba = np.zeros((len(data.x), 17), dtype=np.float32)
     proba[te] = predict_proba(model, data.x[te])
-    record("vit_position_random_frames", proba, is_test, "position")
+    record(name, proba, is_test, "position")
 
 
 def run_rollout(data, ep):
